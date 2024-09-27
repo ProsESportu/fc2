@@ -1,5 +1,8 @@
+import cProfile
 import random
 import sys
+
+import matplotlib
 
 from PID import PID
 from interfaces import IDrives, IRCReceiver, IGyro
@@ -121,29 +124,46 @@ class Gyro(IGyro):
         return self.x.val, self.y.val, self.z.val
 
 
-with plt.ion():
-    fig = plt.figure(figsize=(15, 5))
-    (rc_fig, gyro_fig, drives_fig) = fig.subfigures(1, 3, width_ratios=[0.5, 0.5, 1])
-    drives = Drives(drives_fig)
-    rcreceiver = RCReceiver(rc_fig)
-    gyro = Gyro(gyro_fig)
-    CYCLE_FREQ = 400
-    CYCLE_TIME = 1 / CYCLE_FREQ
-    pid_yaw = PID(1, 0, 0, CYCLE_TIME, 1)
-    pid_pitch = PID(1, 0, 0, CYCLE_TIME, 1)
-    pid_roll = PID(1, 0, 0, CYCLE_TIME, 1)
+CYCLE_FREQ = 4
+CYCLE_TIME = 1 / CYCLE_FREQ
 
-    while True:
-        start = time.perf_counter()
-        desired_yaw, desired_pitch, desired_roll, desired_throttle = rcreceiver.get_mapped()
-        yaw_change, pitch_change, roll_change = gyro.read_calibrated_mapped()
-        target_yaw = pid_yaw.update(desired_yaw, yaw_change)
-        target_pitch = pid_pitch.update(desired_pitch, pitch_change)
-        target_roll = pid_roll.update(desired_roll, roll_change)
-        drives.set(target_yaw, target_pitch, target_roll, desired_throttle)
-        fig.canvas.draw()
-        fig.canvas.flush_events()
-        el = time.perf_counter() - start
-        rem = CYCLE_TIME - el
-        print(rem)
-        time.sleep(rem if rem > 0 else 0)
+
+def main():
+    matplotlib.use("tkagg")
+    matplotlib.style.use('fast')
+    with plt.ion():
+        fig = plt.figure(figsize=(15, 5))
+        (rc_fig, gyro_fig, drives_fig) = fig.subfigures(1, 3, width_ratios=[0.5, 0.5, 1])
+        drives = Drives(drives_fig)
+        rcreceiver = RCReceiver(rc_fig)
+        gyro = Gyro(gyro_fig)
+        pid_yaw = PID(1, 0, 0, CYCLE_TIME, 1)
+        pid_pitch = PID(1, 0, 0, CYCLE_TIME, 1)
+        pid_roll = PID(1, 0, 0, CYCLE_TIME, 1)
+        enable = True
+
+        def on_close(event):
+            nonlocal enable
+            enable = False
+
+        fig.canvas.mpl_connect('close_event', on_close
+                               )
+        while enable:
+            start = time.perf_counter()
+            desired_yaw, desired_pitch, desired_roll, desired_throttle = rcreceiver.get_mapped()
+            yaw_change, pitch_change, roll_change = gyro.read_calibrated_mapped()
+            target_yaw = pid_yaw.update(desired_yaw, yaw_change)
+            target_pitch = pid_pitch.update(desired_pitch, pitch_change)
+            target_roll = pid_roll.update(desired_roll, roll_change)
+            drives.set(target_yaw, target_pitch, target_roll, desired_throttle)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            el = time.perf_counter() - start
+            rem = CYCLE_TIME - el
+            print(rem)
+            time.sleep(rem if rem > 0 else 0)
+
+
+if __name__ == '__main__':
+    main()
+    # cProfile.run('main()', filename='main.prof')
